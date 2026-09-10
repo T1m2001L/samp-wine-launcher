@@ -1,0 +1,15 @@
+# logs / temp
+*.log
+*.out
+*.pcap
+
+# game / wine artifacts (never commit these)
+*.tar.gz
+*.tar.xz
+*.7z
+*.dll
+*.bak
+
+# local overrides
+.env
+config.local.sh
