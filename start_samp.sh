@@ -145,6 +145,24 @@ sleep 2
 
 cd "$GAME" || { warn "game dir not found: $GAME"; exit 1; }
 
+# ---------------------------- 9.5 sync game dir into registry ---------------
+# samp.exe locates gta_sa.exe via HKCU\Software\SAMP\gta_sa_exe, and gta_sa.exe
+# reads HKLM\...\Rockstar Games\GTA San Andreas. Both must match $GAME or a
+# client-dir switch is silently ignored (or crashes). Write real Z:\ paths so
+# no symlinks are involved.
+to_win_path(){ printf 'Z:%s' "$1" | sed -e 's#/#\\#g'; }
+GAME_WIN="$(to_win_path "$GAME")"
+WANT_EXE="${GAME_WIN}\\gta_sa.exe"
+CUR_EXE=$(wine reg query "HKCU\\Software\\SAMP" /v gta_sa_exe 2>/dev/null \
+          | sed -n 's/.*REG_SZ[[:space:]]*//p' | tr -d '\r')
+if [ "$(printf '%s' "$CUR_EXE" | tr 'A-Z' 'a-z')" \
+     != "$(printf '%s' "$WANT_EXE" | tr 'A-Z' 'a-z')" ]; then
+  log "syncing game dir into wine registry: $GAME_WIN"
+  wine reg add "HKCU\\Software\\SAMP" /v gta_sa_exe /t REG_SZ /d "$WANT_EXE" /f >/dev/null 2>&1
+  wine reg add "HKLM\\Software\\Rockstar Games\\GTA San Andreas" /v InstallationPath /t REG_SZ /d "$GAME_WIN" /f >/dev/null 2>&1
+  wine reg add "HKLM\\Software\\Rockstar Games\\GTA San Andreas" /v ExePath /t REG_SZ /d "$WANT_EXE" /f >/dev/null 2>&1
+fi
+
 # ---------------------------- 10. launch ------------------------------------
 if [ "$MODE" = "gui" ]; then
   log "launching SA-MP (GUI connect window)"

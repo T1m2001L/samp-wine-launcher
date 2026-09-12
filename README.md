@@ -180,6 +180,44 @@ wine explorer /desktop=gtasa,800x600 samp.exe 1.2.3.4:7777 -c
 → 某些 SA-MP 整合包自带一个 ~2.8 MB 的 `version.dll` 代理/加载器会崩基础游戏。
 重命名掉即可（脚本已自动处理）。
 
+**8. 启动即弹 "Grand Theft Auto SA" 错误框（俄语乱码），游戏卡住不进主界面**
+→ 引擎检测不到声卡。原文是 CP1251 俄语"未找到已安装的声卡"，因 Wine 的 ANSI
+代码页不是 1251 而显示成乱码（可从进程内存还原确认）。最常见原因：
+音频驱动被设成 `none`（见第 9 条的踩坑来历）。修复：
+```bash
+wine reg add "HKCU\\Software\\Wine\\Drivers" /v Audio /t REG_SZ /d alsa /f
+```
+
+**9. 装了 CLEO4 / SAMPFUNCS / MoonLoader 的客户端进服后 SA-MP 崩溃
+`Exception At Address: 0x004DD5A3`（干净客户端正常）**
+→ ALSA 的 `hw:0,0` 是**独占设备**：mod 的音频库（CLEO 的 bass.dll/SoundSystem）
+先初始化并占住声卡，游戏引擎随后创建 DirectSound 失败，
+`AUDIO\CONFIG\EVENTVOL.DAT` 的音量表指针保持 NULL，播放音效即崩。
+Windows 没有这个问题（系统层共享混音）。
+解决：`/etc/asound.conf` 用 **dmix** 软件混音让多方共享声卡：
+```
+pcm.!default {
+    type plug
+    slave.pcm "dmixer"
+}
+pcm.dmixer {
+    type dmix
+    ipc_key 1024
+    slave {
+        pcm "hw:0,0"
+        period_time 0
+        period_size 1024
+        buffer_size 4096
+        rate 44100
+    }
+    bindings { 0 0  1 1 }
+}
+ctl.!default { type hw card 0 }
+```
+注意别把音频设成 `none` 来绕：会换成第 8 条的声卡错误框。
+另：整合包里的 `eax.dll` 是 gta_sa.exe 按序号**静态导入**的必需依赖，
+删掉/改名会导致 `err:module:import_dll ... c0000135`，游戏根本起不来。
+
 ---
 
 ## 已知限制
