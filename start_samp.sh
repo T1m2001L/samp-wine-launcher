@@ -55,21 +55,24 @@ log(){ printf '\033[1;32m[start]\033[0m %s\n' "$*"; }
 warn(){ printf '\033[1;33m[warn]\033[0m %s\n' "$*"; }
 
 # ---------------------------- 1. Xorg (root) --------------------------------
-if ! pgrep -x Xorg >/dev/null 2>&1; then
+# Match our exact display: another Xorg (e.g. Trae's VNC on :1) must NOT be
+# treated as this display being up, otherwise the game silently gets no X.
+if ! pgrep -f "Xorg ${DISP}( |$)" >/dev/null 2>&1 && [ ! -S "/tmp/.X11-unix/X${DISP#:}" ]; then
   log "starting Xorg $DISP (needs a display; an HDMI dummy plug is recommended)"
   rm -f "/tmp/.X11-unix/X${DISP#:}" 2>/dev/null
   sdo setsid "$XORG_BIN" "$DISP" -noreset -ac -nolisten tcp \
       -logfile /tmp/xorg.log >/tmp/xorg.out 2>&1 &
   sleep 6
 fi
-if pgrep -x Xorg >/dev/null 2>&1; then
+x_ok(){ pgrep -f "Xorg ${DISP}( |$)" >/dev/null 2>&1 || [ -S "/tmp/.X11-unix/X${DISP#:}" ]; }
+if x_ok; then
   log "Xorg ready ($(DISPLAY=$DISP xdpyinfo 2>/dev/null | grep -m1 dimensions))"
 else
   warn "Xorg not ready; see /tmp/xorg.log"; tail -25 /tmp/xorg.log 2>/dev/null
 fi
 
 # ---------------------------- 2. resolution ---------------------------------
-if pgrep -x Xorg >/dev/null 2>&1; then
+if x_ok; then
   OUT=$(DISPLAY=$DISP xrandr 2>/dev/null | awk '/ connected/{print $1; exit}')
   if [ -n "$OUT" ]; then
     if DISPLAY=$DISP xrandr --output "$OUT" --mode "$RES" >/dev/null 2>&1; then
@@ -93,16 +96,21 @@ if ! pgrep -x picom >/dev/null; then
 fi
 
 # ---------------------------- 5. x11vnc -------------------------------------
-if ! pgrep -x x11vnc >/dev/null; then
-  log "starting x11vnc on :$VNC_PORT (no password)"
-  setsid x11vnc -display "$DISP" -forever -shared -nopw -rfbport "$VNC_PORT" \
-      -noxdamage >/tmp/x11vnc.log 2>&1 & sleep 2
+# Detect an x11vnc attached to OUR display (Trae runs one on :1). Bind only
+# IPv4 to avoid colliding with the stray IPv6 :5900 socket of Trae's x11vnc.
+if ! pgrep -f "x11vnc.*-display ${DISP}( |$)" >/dev/null 2>&1; then
+  log "starting x11vnc on :$VNC_PORT (no password, IPv4 only)"
+  setsid x11vnc -display "$DISP" -listen 0.0.0.0 -forever -shared -nopw \
+      -rfbport "$VNC_PORT" -noxdamage >/tmp/x11vnc.log 2>&1 & sleep 2
 fi
 
 # ---------------------------- 6. noVNC / websockify -------------------------
 if ! pgrep -f "websockify.*$NOVNC_PORT" >/dev/null; then
   log "starting noVNC on :$NOVNC_PORT"
-  setsid websockify --web=/usr/share/novnc "$NOVNC_PORT" "localhost:$VNC_PORT" \
+  # Must use 127.0.0.1, NOT localhost: localhost resolves to ::1 first, where
+  # Trae's x11vnc (:1) listens on [::]:5900 -- the browser would then show the
+  # Trae desktop instead of the game on :0 (our x11vnc binds IPv4 only).
+  setsid websockify --web=/usr/share/novnc "$NOVNC_PORT" "127.0.0.1:$VNC_PORT" \
       >/tmp/novnc.log 2>&1 & sleep 1
 fi
 

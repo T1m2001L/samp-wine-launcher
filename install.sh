@@ -171,12 +171,14 @@ fi
 # ---------------------------- 7. sudoers NOPASSWD ----------------------------
 # start_samp.sh 以 root 启动 Xorg；NOPASSWD 比每次传密码安全
 if [ "$DO_SUDOERS" = 1 ]; then
-  if sdo test -f /etc/sudoers.d/samp && sdo grep -q "/usr/lib/xorg/Xorg" /etc/sudoers.d/samp; then
+  if sdo test -f /etc/sudoers.d/samp && sdo grep -q "setsid /usr/lib/xorg/Xorg" /etc/sudoers.d/samp; then
     log "sudoers 已配置（/etc/sudoers.d/samp）"
   else
     log "写入 /etc/sudoers.d/samp（NOPASSWD: Xorg + 字体安装）"
     T="$(mktemp)"
-    printf '%s ALL=(root) NOPASSWD: /usr/lib/xorg/Xorg\n' "$USER" > "$T"
+    # Must include `setsid` and trailing wildcard: start_samp.sh invokes
+    # `sudo setsid /usr/lib/xorg/Xorg :0 ...`; sudoers matches command prefix.
+    printf '%s ALL=(root) NOPASSWD: /usr/bin/setsid /usr/lib/xorg/Xorg *\n' "$USER" > "$T"
     printf '%s ALL=(root) NOPASSWD: /usr/bin/apt-get install -y fonts-noto-cjk\n' "$USER" >> "$T"
     sdo visudo -cf "$T" >/dev/null || { rm -f "$T"; die "sudoers 校验失败，未写入"; }
     sdo install -m 0440 "$T" /etc/sudoers.d/samp

@@ -125,7 +125,7 @@ http://<主机IP>:6080/vnc.html        # 无密码
 脚本需要 root 权限启动 Xorg。推荐配置 **NOPASSWD**（比传密码安全）：
 ```
 # /etc/sudoers.d/samp  (用 visudo -f 编辑)
-youruser ALL=(root) NOPASSWD: /usr/lib/xorg/Xorg
+youruser ALL=(root) NOPASSWD: /usr/bin/setsid /usr/lib/xorg/Xorg *
 youruser ALL=(root) NOPASSWD: /usr/bin/apt-get install -y fonts-noto-cjk
 ```
 
